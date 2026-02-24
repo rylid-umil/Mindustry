@@ -31,7 +31,7 @@ import mindustry.net.*;
 import mindustry.type.*;
 import mindustry.ui.dialogs.*;
 import mindustry.world.*;
-import mindustry.world.blocks.power.PowerNode.*;
+import mindustry.world.blocks.power.*;
 import mindustry.world.blocks.storage.CoreBlock.*;
 
 import java.io.*;
@@ -78,15 +78,6 @@ public class Control implements ApplicationListener, Loadable{
                 });
             }
             checkAutoUnlocks();
-
-            if((OS.isWindows && !OS.is64Bit && !Core.settings.getBool("nowarn32bit", false))){
-                BaseDialog dialog = new BaseDialog("@warn.32bit.title");
-                dialog.buttons.button("@ok", dialog::hide).size(120f, 64f);
-                dialog.cont.add("@warn.32bit").labelAlign(Align.center, Align.center).wrap().grow().row();
-                dialog.cont.check("@dontshowagain", val -> Core.settings.put("nowarn32bit", val));
-
-                dialog.show();
-            }
         });
 
         Events.on(StateChangeEvent.class, event -> {
@@ -245,8 +236,8 @@ public class Control implements ApplicationListener, Loadable{
                     float maxDelay = 0f;
 
                     for(var build : state.rules.defaultTeam.data().buildings){
-                        //power nodes need to be configured later once everything is built
-                        if(build instanceof PowerNodeBuild){
+                        //some blocks need to be configured later once everything is built
+                        if(build.block.delayLandingConfig){
                             toBePlacedConfigs.add(new Object[]{build, build.config()});
                         }
                     }
@@ -472,6 +463,10 @@ public class Control implements ApplicationListener, Loadable{
 
                             //set spawn for sector damage to use
                             Tile spawn = world.tile(spawnPos);
+                            if(spawn == null){
+                                playNewSector(origin, sector, reloader);
+                                return;
+                            }
                             spawn.setBlock(sector.planet.defaultCore, state.rules.defaultTeam);
 
                             //apply damage to simulate the sector being lost
@@ -503,7 +498,15 @@ public class Control implements ApplicationListener, Loadable{
                                     }
                                 }
 
-                                //copy over all buildings from the previous save, retaining config and health, and making them derelict. contents are not saved (derelict repair clears them anyway)
+                                //all the derelict power graphs are invalid
+                                for(var build : previousBuildings){
+                                    if(build.power != null){
+                                        build.power.graph = new PowerGraph();
+                                        build.power.links.clear();
+                                    }
+                                }
+
+                                //copy over all buildings from the previous save, retaining config and health, and making them derelict
                                 for(var build : previousBuildings){
                                     Tile tile = world.tile(build.tileX(), build.tileY());
                                     if(tile != null && tile.build == null && Build.validPlace(build.block, state.rules.defaultTeam, build.tileX(), build.tileY(), build.rotation, false, false)){
